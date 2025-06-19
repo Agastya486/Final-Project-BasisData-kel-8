@@ -1,34 +1,39 @@
 import java.sql.*;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Scanner;
+import view.SeminarView;
 
 public class SeminarDAO {
     private Scanner sc = new Scanner(System.in);
 
-    public void viewSeminars(){
-    try (Connection conn = DBConnection.getConnection();
-         Statement stmt = conn.createStatement();
-         ResultSet rs = stmt.executeQuery(
-             "SELECT s.id_seminar, s.tema, s.tanggal, l.nama_lokasi " +
-             "FROM seminar s " +
-             "LEFT JOIN lokasi l ON s.id_lokasi = l.id_lokasi")) {
+    public List<SeminarView> getSeminarsForView() {
+        List<SeminarView> seminarList = new ArrayList<>();
+        
+        String query = "SELECT s.id_seminar, s.tema, s.tanggal, l.nama_lokasi " +
+                       "FROM seminar s " +
+                       "LEFT JOIN lokasi l ON s.id_lokasi = l.id_lokasi";
 
-        System.out.println("\n=== DAFTAR SEMINAR ===");
-        System.out.printf("%-5s %-40s %-15s %-20s%n", 
-            "ID", "Tema", "Tanggal", "Lokasi");
-        System.out.println("------------------------------------------------------------");
-
-        while (rs.next()) {
-            System.out.printf("%-5d %-40s %-15s %-20s%n",
-                rs.getInt("id_seminar"), 
-                rs.getString("tema"),
-                rs.getDate("tanggal").toString(), 
-                rs.getString("nama_lokasi"));
+        try (Connection conn = DBConnection.getConnection();
+             Statement stmt = conn.createStatement();
+             ResultSet rs = stmt.executeQuery(query)) {
+            
+            // Loop melalui setiap baris hasil dari ResultSet
+            while (rs.next()) {
+                SeminarView seminar = new SeminarView(
+                    rs.getInt("id_seminar"),
+                    rs.getString("tema"),
+                    rs.getDate("tanggal") != null ? rs.getDate("tanggal").toString() : "N/A", 
+                    rs.getString("nama_lokasi")
+                );
+                seminarList.add(seminar);
+            }
+        } catch (SQLException e) {
+            System.err.println("Error saat mengambil data seminar untuk tampilan:");
+            e.printStackTrace();
         }
-    } catch (SQLException e) {
-        System.err.println("Error saat menampilkan seminar:");
-        e.printStackTrace();
+        return seminarList; // Kembalikan list of SeminarView
     }
-}
 
     public void addSeminar() {
         try (Connection conn = DBConnection.getConnection()) {
@@ -148,6 +153,58 @@ public class SeminarDAO {
             ps.executeUpdate();
             System.out.println("Seminar dihapus.");
         } catch (SQLException e) {
+            e.printStackTrace();
+        }
+    }
+
+    public void generateSeminarParticipantsReport() {
+        System.out.println("\n=== LAPORAN SEMINAR DAN JUMLAH PENDAFTAR (CTE) ===");
+        System.out.println("Daftar seminar beserta jumlah total pendaftar\n");
+
+        String query = "WITH SeminarPendaftar AS ( " +
+                       "    SELECT " +
+                       "        s.id_seminar, " +
+                       "        s.tema, " +
+                       "        COUNT(p.id_pendaftaran) AS JumlahPendaftar " +
+                       "    FROM " +
+                       "        seminar s " +
+                       "    LEFT JOIN " +
+                       "        pendaftaran p ON s.id_seminar = p.id_seminar " +
+                       "    GROUP BY " +
+                       "        s.id_seminar, s.tema " +
+                       ") " +
+                       "SELECT " +
+                       "    sp.id_seminar, " +
+                       "    sp.tema, " +
+                       "    sp.JumlahPendaftar " +
+                       "FROM " +
+                       "    SeminarPendaftar sp " +
+                       "ORDER BY " +
+                       "sp.JumlahPendaftar DESC, sp.tema;";
+
+        try (Connection conn = DBConnection.getConnection();
+             Statement stmt = conn.createStatement();
+             ResultSet rs = stmt.executeQuery(query)) {
+
+            if (!rs.isBeforeFirst()) {
+                System.out.println("Tidak ada data seminar untuk ditampilkan.");
+                return;
+            }
+
+            System.out.printf("%-5s | %-40s | %-15s%n",
+                              "ID", "Tema Seminar", "Jumlah Pendaftar");
+            System.out.println("---------------------------------------------------------------");
+
+            while (rs.next()) {
+                System.out.printf("%-5d | %-40s | %-15d%n",
+                                  rs.getInt("id_seminar"),
+                                  rs.getString("tema"),
+                                  rs.getInt("JumlahPendaftar"));
+            }
+            System.out.println("---------------------------------------------------------------");
+
+        } catch (SQLException e) {
+            System.err.println("Error saat membuat laporan CTE seminar:");
             e.printStackTrace();
         }
     }

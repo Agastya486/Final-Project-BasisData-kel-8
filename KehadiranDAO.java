@@ -1,37 +1,106 @@
 import java.sql.*;
+import java.util.List;
 import java.util.Scanner;
+import view.SeminarView;
+import view.SesiSeminarView;
+import view.UserView;
 
 public class KehadiranDAO {
         private Scanner sc = new Scanner(System.in);
         SeminarDAO seminarDAO = new SeminarDAO();
         SesiSeminarDAO sesiSeminarDAO = new SesiSeminarDAO();
-        PesertaDAO pesertaDAO = new PesertaDAO();
+        UserDAO userDAO = new UserDAO();
         UndoStack undoStack = new UndoStack();
 
         public void inputKehadiran() {
                 try (Connection conn = DBConnection.getConnection()) {
-                        // 1. Pilih Seminar
-                        seminarDAO.viewSeminars();
+                        // List seminar
+                        System.out.println("\n=== DAFTAR SEMINAR ===\n");
+                        List<SeminarView> seminars = seminarDAO.getSeminarsForView(); 
+
+                        if (seminars.isEmpty()) {
+                                System.out.println("Tidak ada seminar yang ditemukan.");
+                        } else {
+                                // Cetak header tabel
+                                System.out.printf("%-5s | %-40s | %-15s | %-20s%n",
+                                        "ID", "Tema", "Tanggal", "Lokasi");
+                                System.out.println("--------------------------------------------------------------------------------");
+                                
+                                // Loop melalui setiap objek SeminarView dalam list dan cetak datanya
+                                for (SeminarView seminar : seminars) {
+                                        System.out.printf("%-5d | %-40s | %-15s | %-20s%n",
+                                        seminar.getIdSeminar(),
+                                        seminar.getTema(),
+                                        seminar.getTanggal(),
+                                        seminar.getLokasi());
+                                }
+                                System.out.println("--------------------------------------------------------------------------------");
+                        }
+
                         System.out.print("Masukkan ID Seminar: ");
                         int idSeminar = Integer.parseInt(sc.nextLine());
 
-                        // 2. Pilih Sesi
+                        // Pilih Sesi
                         System.out.println("\n");
-                        sesiSeminarDAO.viewSessionsBySeminar(conn, idSeminar);
+                        List<SesiSeminarView> sesis = sesiSeminarDAO.getSessionsBySeminarForView(idSeminar);
+
+                        if (sesis.isEmpty()) {
+                                System.out.println("Tidak ada sesi seminar ditemukan untuk ID Seminar " + idSeminar + ".");
+                                return;
+                        } else {
+                                // Cetak header tabel sesi
+                                System.out.printf("%-5s | %-30s | %-25s | %-12s | %-8s | %-8s | %-20s%n",
+                                "ID Sesi", "Tema Seminar", "Judul Sesi", "Tanggal", "Mulai", "Selesai", "Pemateri");
+                                System.out.println("-----------------------------------------------------------------------------------------------------------------");
+                                
+                                // Loop untuk mencetak setiap objek SesiSeminarView
+                                for (SesiSeminarView sesi : sesis) {
+                                System.out.printf("%-5d | %-30s | %-25s | %-12s | %-8s | %-8s | %-20s%n",
+                                        sesi.getIdSesi(),
+                                        sesi.getTemaSeminar(),
+                                        sesi.getJudulSesi(),
+                                        sesi.getTanggalSesi(),
+                                        sesi.getWaktuMulai(),
+                                        sesi.getWaktuSelesai(),
+                                        sesi.getNamaPemateri());
+                                }
+                                System.out.println("-----------------------------------------------------------------------------------------------------------------");
+                        }
                         System.out.print("Masukkan ID Sesi Seminar: ");
                         int idSesi = Integer.parseInt(sc.nextLine());
 
-                        // 3. Pilih Peserta
+                        // Pilih Peserta
                         System.out.println("\n");
-                        pesertaDAO.viewPesertaBySeminar(conn, idSeminar);  // Pastikan hanya tampilkan peserta yang mendaftar di seminar ini
+                        List<UserView> pesertaSeminarList = userDAO.getPesertaBySeminarForView(idSeminar);
+
+                        if (pesertaSeminarList.isEmpty()) {
+                                System.out.println("Tidak ada peserta terdaftar untuk seminar ID " + idSeminar + ".");
+                                return;
+                        } else {
+                                // Cetak header tabel peserta
+                                System.out.printf("%-5s | %-20s | %-30s | %-10s%n",
+                                "ID", "Nama", "Email", "Role");
+                                System.out.println("------------------------------------------------------------------");
+                                
+                                // Loop untuk mencetak setiap objek UserView (peserta)
+                                for (UserView peserta : pesertaSeminarList) {
+                                System.out.printf("%-5d | %-20s | %-30s | %-10s%n",
+                                        peserta.getIdUser(),
+                                        peserta.getNama(),
+                                        peserta.getEmail(),
+                                        peserta.getNamaRole());
+                                }
+                                System.out.println("------------------------------------------------------------------");
+                        }
+
                         System.out.print("Masukkan ID Peserta: ");
                         int idPeserta = Integer.parseInt(sc.nextLine());
 
-                        // 4. Input Status Hadir
+                        // Input Status Hadir
                         System.out.print("Hadir? (true/false): ");
                         boolean hadir = Boolean.parseBoolean(sc.nextLine());
 
-                        // 5. Query Insert Kehadiran
+                        // Query Insert Kehadiran
                         // Cek apakah peserta sudah terdaftar di seminar (ambil id_pendaftaran)
                         String sqlCheckPendaftaran = "SELECT id_pendaftaran FROM pendaftaran WHERE id_user = ? AND id_seminar = ?";
                         int idPendaftaran = -1;
@@ -109,5 +178,55 @@ public class KehadiranDAO {
                         System.err.println("Gagal undo: " + e.getMessage());
                 }
 
+        }
+
+        public void generateAttendanceCrossTabReport() {
+                System.out.println("\n=== LAPORAN KEHADIRAN (CROSSTAB) ===");
+                System.out.println("Ringkasan jumlah Hadir dan Tidak Hadir per Sesi Seminar\n");
+
+                String query = "SELECT " +
+                        "s.tema AS Tema_Seminar, " +
+                        "ss.judul_sesi AS Judul_Sesi, " +
+                        "COUNT(CASE WHEN k.hadir = TRUE THEN 1 END) AS Jumlah_Hadir, " +
+                        "COUNT(CASE WHEN k.hadir = FALSE THEN 1 END) AS Jumlah_Tidak_Hadir, " +
+                        "COUNT(k.id_kehadiran) AS Total_Peserta_Sesi " +
+                        "FROM " +
+                        "kehadiran k " +
+                        "JOIN " +
+                        "sesi_seminar ss ON k.id_sesi = ss.id_sesi " +
+                        "JOIN " +
+                        "seminar s ON ss.id_seminar = s.id_seminar " +
+                        "GROUP BY " +
+                        "s.tema, ss.judul_sesi " +
+                        "ORDER BY " +
+                        "s.tema, ss.judul_sesi;";
+
+                try (Connection conn = DBConnection.getConnection();
+                Statement stmt = conn.createStatement();
+                ResultSet rs = stmt.executeQuery(query)) {
+
+                if (!rs.isBeforeFirst()) { // Cek apakah ResultSet kosong
+                        System.out.println("Tidak ada data kehadiran untuk ditampilkan.");
+                        return;
+                }
+
+                System.out.printf("%-30s | %-30s | %-12s | %-16s | %-20s%n",
+                                "Tema Seminar", "Judul Sesi", "Jml Hadir", "Jml Tdk Hadir", "Total Peserta Sesi");
+                System.out.println("--------------------------------------------------------------------------------------------------------------");
+
+                while (rs.next()) {
+                        System.out.printf("%-30s | %-30s | %-12d | %-16d | %-20d%n",
+                                        rs.getString("Tema_Seminar"),
+                                        rs.getString("Judul_Sesi"),
+                                        rs.getInt("Jumlah_Hadir"),
+                                        rs.getInt("Jumlah_Tidak_Hadir"),
+                                        rs.getInt("Total_Peserta_Sesi"));
+                }
+                System.out.println("--------------------------------------------------------------------------------------------------------------");
+
+                } catch (SQLException e) {
+                System.err.println("Error saat membuat laporan CrossTab kehadiran:");
+                e.printStackTrace();
+                }
         }
 }
