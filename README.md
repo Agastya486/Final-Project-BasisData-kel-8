@@ -107,4 +107,12 @@ Tujuannya adalah untuk melakukan compile pada setiap file
 ```cmd
 > java -cp ".;lib/mysql-connector-j-9.3.0.jar" Main
 ```
+
+## Program dibuat oleh 
+|Nama|	NIM |
+|----|------|
+|Muhammad Akbar Prayoga	|24082010103|
+|Muhammad Farros Nidji	|24082010109|
+|Devano Agastya H	|24082010133|
+|Razan Muhammad R	|24082010134|
 ## Catatan 📝: file dengan ekstensi .class adalah file yang dibuat oleh compiler, sehingga tidak bisa dihapus. Jika dihapus, maka program tidak dapat berjalan 🙏
